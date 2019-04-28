@@ -1,6 +1,3 @@
-// This #include statement was automatically added by the Particle IDE.
-#include "mqtt.h"
-
 #include "papertrail.h"
 #include "presencemanager.h"
 #include "publishqueue.h"
@@ -13,7 +10,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 void setDoorLock(bool locked);
 void triggerDoor(const char *command, bool voiceCommand);
 void release_button();
-
 
 unsigned long trigger_length = 500UL; // 1/2 second
 unsigned long door_bounce_length = 1000UL; // 1 second

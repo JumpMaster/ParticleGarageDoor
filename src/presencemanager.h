@@ -1,7 +1,7 @@
 #ifndef __PRESENCEMANAGER_H__
 #define __PRESENCEMANAGER_H__
 
-#include "application.h"
+#include "Particle.h"
 #include "publishqueue.h"
 
 #define PLATFORM_PHOTON  6
