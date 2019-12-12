@@ -1,7 +1,5 @@
 #include "papertrail.h"
 #include "presencemanager.h"
-#include "publishqueue.h"
-#include "ArduinoJson.h"
 #include "mqtt.h"
 #include "secrets.h"
 
@@ -21,7 +19,6 @@ unsigned long resetTime = 0;
 
 int front_sensor = D0;
 int rear_sensor = D1;
-uint32_t nextMqttCheckin;
 
 enum {CLOSED, CLOSING, OPEN, OPENING, STUCK};
 bool isLocked = true;
@@ -34,7 +31,7 @@ const int mqttConnectAtemptTimeout = 5000;
 
 Timer release_button_timer(trigger_length, release_button, true);
 
-PublishQueue pq;
+// PublishQueue pq;
 PresenceManager pm;
 
 PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort, "Garage Door");
@@ -45,18 +42,13 @@ void random_seed_from_cloud(unsigned seed) {
    srand(seed);
 }
 
-int voiceDoorActivation(const char *command) {
-    triggerDoor(command, true);
-    return 0;
-}
-
-void triggerDoor(const char *command, bool voiceCommand) {
+void triggerDoor(const char *command) {
     
     if (strcmp(command, "open") == 0) {
         if (door_state == OPEN)
             return;
-        if (isLocked && voiceCommand) {
-            pq.publish("pushover", "Garage door received an open command while locked");
+        if (isLocked) {
+            Particle.publish("pushover", "Garage door received an open command while locked", PRIVATE);
             Log.info("Garage door received an open command while locked");
             return;
         }
@@ -115,7 +107,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", pm.isAnyone("home"), alarmArmed);
         
     } else if (strcmp(topic, "home/garage/door/set") == 0) {
-        triggerDoor(p, false);
+        triggerDoor(p);
     }
 }
 
@@ -136,10 +128,10 @@ void setDoorLock(bool locked) {
         isLocked = locked;
         
         if (isLocked) {
-            pq.publish("pushover", "Garage door is locked");
+            Particle.publish("pushover", "Garage door is locked", PRIVATE);
             Log.info("Garage door is locked");
         } else {
-            pq.publish("pushover", "Garage door is unlocked");
+            Particle.publish("pushover", "Garage door is unlocked", PRIVATE);
             Log.info("Garage door is unlocked");
         }
     }   
@@ -186,8 +178,7 @@ void setup() {
     connectToMQTT();
     
     Particle.variable("reset-time", &resetTime, INT);
-
-    Particle.function("voice-door-activation", voiceDoorActivation);
+    Particle.publishVitals(900);
 }
 
 void loop() {
@@ -217,7 +208,7 @@ void loop() {
     
     if ((door_state == CLOSING || door_state == OPENING) && millis() > (last_state_change + max_door_move_time)) {
             setDoorState(STUCK, isLocked);
-            pq.publish("group_pushover", "Garage door is stuck");
+            Particle.publish("group_pushover", "Garage door is stuck", PRIVATE);
     }
     
     if (mqttClient.isConnected()) {
@@ -226,13 +217,6 @@ void loop() {
         Log.info("MQTT Disconnected");
         connectToMQTT();
     }
-    
-    if (mqttClient.isConnected() && millis() > nextMqttCheckin) {
-        nextMqttCheckin = millis() + 300000;
-        mqttClient.publish("home/particle/checkin", System.deviceID());
-    }
-    
-    // pm.process();
-    pq.process();
+
     wd.checkin(); // resets the AWDT count
 }

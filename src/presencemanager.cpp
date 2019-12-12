@@ -1,29 +1,7 @@
 #include "presencemanager.h"
 #include "Particle.h"
 
-extern PublishQueue pq;
-
 PresenceManager::PresenceManager() { }
-
-void PresenceManager::subscribe() {
-
-}
-
-void PresenceManager::process() {
-}
-
-void PresenceManager::PublishUser(User *user) {
-    //pq.publish("presence", String::format("{\"method\":\"user\",\"type\":\"update\",\"user\":\"%s\",\"location\":\"%s\"}", user->name, user->location));
-    pq.publish("TEST", String::format("{\"user\":\"%s\",\"location\":\"%s\"}", user->name, user->location));
-}
-
-void PresenceManager::PublishUsers() {
-    for (uint8_t i = 0; i < users.size(); i++)
-        PublishUser(&users[i]);
-}
-
-void PresenceManager::handler(const char *eventName, const char *data) {
-}
 
 void PresenceManager::updateUser(const char *name, const char *location) {
 
