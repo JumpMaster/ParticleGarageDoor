@@ -8,6 +8,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 void setDoorLock(bool locked);
 void triggerDoor(const char *command, bool voiceCommand);
 void release_button();
+void sendNotification(const char *message);
 
 unsigned long trigger_length = 500UL; // 1/2 second
 unsigned long door_bounce_length = 1000UL; // 1 second
@@ -31,7 +32,6 @@ const int mqttConnectAtemptTimeout = 5000;
 
 Timer release_button_timer(trigger_length, release_button, true);
 
-// PublishQueue pq;
 PresenceManager pm;
 
 PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort, "Garage Door");
@@ -48,7 +48,7 @@ void triggerDoor(const char *command) {
         if (door_state == OPEN)
             return;
         if (isLocked) {
-            Particle.publish("pushover", "Garage door received an open command while locked", PRIVATE);
+            sendNotification("Garage door received an open command while locked");
             Log.info("Garage door received an open command while locked");
             return;
         }
@@ -123,15 +123,20 @@ void connectToMQTT() {
         Log.info("MQTT failed to connect");
 }
 
+void sendNotification(const char *message) {
+    if (mqttClient.isConnected())
+        mqttClient.publish("home/notification/low", message, true);
+}
+
 void setDoorLock(bool locked) {
     if (isLocked != locked) {
         isLocked = locked;
         
         if (isLocked) {
-            Particle.publish("pushover", "Garage door is locked", PRIVATE);
+            sendNotification("Garage door is locked");
             Log.info("Garage door is locked");
         } else {
-            Particle.publish("pushover", "Garage door is unlocked", PRIVATE);
+            sendNotification("Garage door is unlocked");
             Log.info("Garage door is unlocked");
         }
     }   
@@ -208,7 +213,7 @@ void loop() {
     
     if ((door_state == CLOSING || door_state == OPENING) && millis() > (last_state_change + max_door_move_time)) {
             setDoorState(STUCK, isLocked);
-            Particle.publish("group_pushover", "Garage door is stuck", PRIVATE);
+            sendNotification("Garage door is stuck");
     }
     
     if (mqttClient.isConnected()) {
