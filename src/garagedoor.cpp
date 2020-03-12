@@ -125,7 +125,7 @@ void connectToMQTT() {
 
 void sendNotification(const char *message) {
     if (mqttClient.isConnected())
-        mqttClient.publish("home/notification/low", message, true);
+        mqttClient.publish("home/notification/low", message, false);
 }
 
 void setDoorLock(bool locked) {
