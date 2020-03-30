@@ -1,5 +1,4 @@
 #include "papertrail.h"
-#include "presencemanager.h"
 #include "mqtt.h"
 #include "secrets.h"
 
@@ -24,6 +23,7 @@ int rear_sensor = D1;
 enum {CLOSED, CLOSING, OPEN, OPENING, STUCK};
 bool isLocked = true;
 bool alarmArmed = false;
+bool isAnyoneHome = false;
 int door_state = CLOSED;
 
 MQTT mqttClient(mqttServer, 1883, mqttCallback);
@@ -31,8 +31,6 @@ unsigned long lastMqttConnectAttempt;
 const int mqttConnectAtemptTimeout = 5000;
 
 Timer release_button_timer(trigger_length, release_button, true);
-
-PresenceManager pm;
 
 PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort, "Garage Door");
 
@@ -76,22 +74,22 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     char p[length + 1];
     memcpy(p, payload, length);
     p[length] = '\0';
-    
-    if (strncmp(topic, "home/location/", 14) == 0) {
-        int nameLen = strlen(topic) - 14;
-        char name[nameLen];
-        memcpy(name, &topic[14], nameLen);
-        name[nameLen] = '\0';
-        Log.info("%s is %s", name, p);
-        pm.updateUser(name, p);
-        
-        if (!isLocked && !pm.isAnyone("home")) {
+
+    Log.info("%s - %s", topic, p);
+
+    if (strcmp(topic, "utilities/isAnyoneHome")) {
+              
+        if (strcmp(p, "true") == 0)
+            isAnyoneHome = true;
+
+
+        if (!isLocked && !isAnyoneHome) {
             setDoorLock(true);
-        } else if (isLocked && !alarmArmed && pm.isAnyone("home")) {
+        } else if (isLocked && !alarmArmed && isAnyoneHome) {
             setDoorLock(false);
         }
         
-        Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", pm.isAnyone("home"), alarmArmed);
+        Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", isAnyoneHome, alarmArmed);
         
     } else if (strcmp(topic, "home/security/alarm/state") == 0) {
         if (strncmp(p, "armed", 5) == 0) {
@@ -100,11 +98,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
                 setDoorLock(true);
         } else if (strcmp(p, "disarmed") == 0) {
             alarmArmed = false;
-            if (isLocked && pm.isAnyone("home"))
+            if (isLocked && isAnyoneHome)
                 setDoorLock(false);
         }
         
-        Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", pm.isAnyone("home"), alarmArmed);
+        Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", isAnyoneHome, alarmArmed);
         
     } else if (strcmp(topic, "home/garage/door/set") == 0) {
         triggerDoor(p);
@@ -116,16 +114,16 @@ void connectToMQTT() {
     bool mqttConnected = mqttClient.connect(System.deviceID(), mqttUsername, mqttPassword);
     if (mqttConnected) {
         Log.info("MQTT Connected");
-        mqttClient.subscribe("home/location/#");
         mqttClient.subscribe("home/security/alarm/state");
         mqttClient.subscribe("home/garage/door/set");
+        mqttClient.subscribe("utilities/#");
     } else
         Log.info("MQTT failed to connect");
 }
 
 void sendNotification(const char *message) {
     if (mqttClient.isConnected())
-        mqttClient.publish("home/notification/low", message, true);
+        mqttClient.publish("home/notification/low", message, false);
 }
 
 void setDoorLock(bool locked) {
