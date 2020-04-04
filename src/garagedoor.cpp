@@ -22,8 +22,9 @@ int rear_sensor = D1;
 
 enum {CLOSED, CLOSING, OPEN, OPENING, STUCK};
 bool isLocked = true;
-bool alarmArmed = false;
+bool isArmed = true;
 bool isAnyoneHome = false;
+bool isDebug = false;
 int door_state = CLOSED;
 
 MQTT mqttClient(mqttServer, 1883, mqttCallback);
@@ -69,41 +70,38 @@ void release_button() {
     digitalWrite(relay_pin, LOW);
 }
 
+void checkLockState() {
+    bool newLockState = isArmed || !isAnyoneHome;
+
+    if (isLocked != newLockState)
+        setDoorLock(newLockState);
+}
+
 // recieve message
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
     char p[length + 1];
     memcpy(p, payload, length);
     p[length] = '\0';
 
-    Log.info("%s - %s", topic, p);
+    if (isDebug)
+        Log.info("%s - %s", topic, p);
 
-    if (strcmp(topic, "utilities/isAnyoneHome")) {
-              
+    if (strcmp(topic, "utilities/isAnyoneHome") == 0) {
+
         if (strcmp(p, "true") == 0)
             isAnyoneHome = true;
+        else
+            isAnyoneHome = false;
 
+        checkLockState();
 
-        if (!isLocked && !isAnyoneHome) {
-            setDoorLock(true);
-        } else if (isLocked && !alarmArmed && isAnyoneHome) {
-            setDoorLock(false);
-        }
-        
-        Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", isAnyoneHome, alarmArmed);
-        
     } else if (strcmp(topic, "home/security/alarm/state") == 0) {
         if (strncmp(p, "armed", 5) == 0) {
-            alarmArmed = true;
-            if (!isLocked)
-                setDoorLock(true);
+            isArmed = true;
         } else if (strcmp(p, "disarmed") == 0) {
-            alarmArmed = false;
-            if (isLocked && isAnyoneHome)
-                setDoorLock(false);
+            isArmed = false;
         }
-        
-        Log.info("Door %s - Anyone home = %d, alarmArmed = %d", isLocked ? "Locked" : "Unlocked", isAnyoneHome, alarmArmed);
-        
+        checkLockState();
     } else if (strcmp(topic, "home/garage/door/set") == 0) {
         triggerDoor(p);
     }
