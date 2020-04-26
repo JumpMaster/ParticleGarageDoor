@@ -95,11 +95,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
         checkLockState();
 
-    } else if (strcmp(topic, "home/security/alarm/state") == 0) {
-        if (strncmp(p, "armed", 5) == 0) {
-            isArmed = true;
-        } else if (strcmp(p, "disarmed") == 0) {
+    } else if (strcmp(topic, "home/security/alarm") == 0) {
+        if (strstr(p, "disarmed")) {
             isArmed = false;
+        } else {
+            isArmed = true;
         }
         checkLockState();
     } else if (strcmp(topic, "home/garage/door/set") == 0) {
@@ -112,7 +112,7 @@ void connectToMQTT() {
     bool mqttConnected = mqttClient.connect(System.deviceID(), mqttUsername, mqttPassword);
     if (mqttConnected) {
         Log.info("MQTT Connected");
-        mqttClient.subscribe("home/security/alarm/state");
+        mqttClient.subscribe("home/security/alarm");
         mqttClient.subscribe("home/garage/door/set");
         mqttClient.subscribe("utilities/#");
     } else
