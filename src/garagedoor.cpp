@@ -1,6 +1,7 @@
 #include "papertrail.h"
 #include "mqtt.h"
 #include "secrets.h"
+#include "DiagnosticsHelperRK.h"
 
 // Stubs
 void mqttCallback(char* topic, byte* payload, unsigned int length);
@@ -15,7 +16,9 @@ unsigned long max_door_move_time = 25000UL; // 25 seconds
 unsigned long last_state_change;
 int relay_pin = A0;
 
-unsigned long resetTime = 0;
+uint32_t resetTime = 0;
+retained uint32_t lastHardResetTime;
+retained int resetCount;
 
 int front_sensor = D0;
 int rear_sensor = D1;
@@ -119,6 +122,24 @@ void connectToMQTT() {
         Log.info("MQTT failed to connect");
 }
 
+uint32_t nextMetricsUpdate = 0;
+void sendTelegrafMetrics() {
+    if (millis() > nextMetricsUpdate) {
+        nextMetricsUpdate = millis() + 30000;
+
+        char buffer[150];
+        snprintf(buffer, sizeof(buffer),
+            "status,device=Garage uptime=%d,resetReason=%d,firmware=\"%s\",memTotal=%ld,memFree=%ld",
+            System.uptime(),
+            System.resetReason(),
+            System.version().c_str(),
+            DiagnosticsHelper::getValue(DIAG_ID_SYSTEM_TOTAL_RAM),
+            DiagnosticsHelper::getValue(DIAG_ID_SYSTEM_USED_RAM)
+            );
+        mqttClient.publish("telegraf/particle", buffer);
+    }
+}
+
 void sendNotification(const char *message) {
     if (mqttClient.isConnected())
         mqttClient.publish("home/notification/low", message, false);
@@ -159,22 +180,44 @@ void setDoorState(int newState, bool locked) {
     }
 }
 
-STARTUP(WiFi.selectAntenna(ANT_EXTERNAL));
-STARTUP(System.enableFeature(FEATURE_RESET_INFO));
 SYSTEM_THREAD(ENABLED)
+
+void startupMacro() {
+    WiFi.selectAntenna(ANT_EXTERNAL);
+    System.enableFeature(FEATURE_RESET_INFO);
+    System.enableFeature(FEATURE_RETAINED_MEMORY);
+}
+STARTUP(startupMacro());
 
 void setup() {
     pinMode(relay_pin, OUTPUT);
     pinMode(front_sensor, INPUT_PULLUP);
     pinMode(rear_sensor, INPUT_PULLUP);
     
-    waitUntil(Particle.connected);
-
-    do
-    {
+    waitFor(Particle.connected, 30000);
+    
+    do {
         resetTime = Time.now();
-        delay(10);
-    } while (resetTime < 1000000 && millis() < 20000);
+        Particle.process();
+    } while (resetTime < 1500000000 || millis() < 10000);
+    
+    if (System.resetReason() == RESET_REASON_PANIC) {
+        if ((Time.now() - lastHardResetTime) < 120) {
+            resetCount++;
+        } else {
+            resetCount = 1;
+        }
+
+        lastHardResetTime = Time.now();
+
+        if (resetCount > 3) {
+            System.enterSafeMode();
+        }
+    } else if (System.resetReason() == RESET_REASON_WATCHDOG) {
+      Log.info("RESET BY WATCHDOG");
+    } else {
+        resetCount = 0;
+    }
 
     connectToMQTT();
     
@@ -214,6 +257,7 @@ void loop() {
     
     if (mqttClient.isConnected()) {
         mqttClient.loop();
+        sendTelegrafMetrics();
     } else if (millis() > (lastMqttConnectAttempt + mqttConnectAtemptTimeout)) {
         Log.info("MQTT Disconnected");
         connectToMQTT();
