@@ -10,9 +10,9 @@ void triggerDoor(const char *command, bool voiceCommand);
 void release_button();
 void sendNotification(const char *message);
 
-unsigned long trigger_length = 500UL; // 1/2 second
-unsigned long door_bounce_length = 1000UL; // 1 second
-unsigned long max_door_move_time = 25000UL; // 25 seconds
+unsigned long trigger_length = 500UL;       // 1/2 second
+unsigned long door_bounce_length = 1000UL;  // 1 second
+unsigned long max_door_move_time = 30000UL; // 30 seconds
 unsigned long last_state_change;
 int relay_pin = A0;
 
@@ -21,7 +21,8 @@ retained uint32_t lastHardResetTime;
 retained int resetCount;
 
 int front_sensor = D0;
-int rear_sensor = D1;
+//int rear_sensor = D1; // D1 is broken!!!
+int rear_sensor = D2;
 
 enum {CLOSED, CLOSING, OPEN, OPENING, STUCK};
 bool isLocked = true;
@@ -36,7 +37,16 @@ const int mqttConnectAtemptTimeout = 5000;
 
 Timer release_button_timer(trigger_length, release_button, true);
 
-PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort, "Garage Door");
+// PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort, "Garage Door");
+
+
+PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort,
+    papertrailDeviceName, System.deviceID(),
+    LOG_LEVEL_NONE, {
+    { "Garage Door", LOG_LEVEL_ALL }
+    // TOO MUCH!!! { “system”, LOG_LEVEL_ALL },
+    // TOO MUCH!!! { “comm”, LOG_LEVEL_ALL }
+});
 
 ApplicationWatchdog wd(60000, System.reset);
 
@@ -129,12 +139,13 @@ void sendTelegrafMetrics() {
 
         char buffer[150];
         snprintf(buffer, sizeof(buffer),
-            "status,device=Garage uptime=%d,resetReason=%d,firmware=\"%s\",memTotal=%ld,memFree=%ld",
+            "status,device=Garage uptime=%d,resetReason=%d,firmware=\"%s\",memTotal=%ld,memFree=%ld,ipv4=\"%s\"",
             System.uptime(),
             System.resetReason(),
             System.version().c_str(),
             DiagnosticsHelper::getValue(DIAG_ID_SYSTEM_TOTAL_RAM),
-            DiagnosticsHelper::getValue(DIAG_ID_SYSTEM_USED_RAM)
+            DiagnosticsHelper::getValue(DIAG_ID_SYSTEM_USED_RAM),
+            WiFi.localIP().toString().c_str()
             );
         mqttClient.publish("telegraf/particle", buffer);
     }
@@ -220,7 +231,9 @@ void setup() {
     }
 
     connectToMQTT();
-    
+
+    Log.info("Boot complete");
+
     Particle.variable("reset-time", &resetTime, INT);
     Particle.publishVitals(900);
 }
@@ -232,7 +245,7 @@ void loop() {
     
     if (door_state != OPENING && _front_sensor_state == LOW && _rear_sensor_state == HIGH)
         new_door_state = CLOSED;
-    else if (door_state != CLOSING &&_front_sensor_state == HIGH && _rear_sensor_state == LOW)
+    else if (door_state != CLOSING && _front_sensor_state == HIGH && _rear_sensor_state == LOW)
         new_door_state = OPEN;
     else if (door_state != STUCK && _front_sensor_state == HIGH && _rear_sensor_state == HIGH) {
         if (door_state != OPENING && door_state != CLOSING) {
