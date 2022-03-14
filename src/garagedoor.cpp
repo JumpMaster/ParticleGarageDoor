@@ -37,11 +37,8 @@ const int mqttConnectAtemptTimeout = 5000;
 
 Timer release_button_timer(trigger_length, release_button, true);
 
-// PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort, "Garage Door");
-
-
 PapertrailLogHandler papertrailHandler(papertrailAddress, papertrailPort,
-    papertrailDeviceName, System.deviceID(),
+    deviceName, System.deviceID(),
     LOG_LEVEL_NONE, {
     { "Garage Door", LOG_LEVEL_ALL }
     // TOO MUCH!!! { “system”, LOG_LEVEL_ALL },
@@ -139,7 +136,8 @@ void sendTelegrafMetrics() {
 
         char buffer[150];
         snprintf(buffer, sizeof(buffer),
-            "status,device=Garage uptime=%d,resetReason=%d,firmware=\"%s\",memTotal=%ld,memFree=%ld,ipv4=\"%s\"",
+            "status,device=%s uptime=%d,resetReason=%d,firmware=\"%s\",memTotal=%ld,memFree=%ld,ipv4=\"%s\"",
+            deviceName,
             System.uptime(),
             System.resetReason(),
             System.version().c_str(),
